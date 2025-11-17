@@ -10,3 +10,6 @@ __pycache__/
 *.dat
 *.txt
 *.h5
+
+# except the config file
+!config.txt
