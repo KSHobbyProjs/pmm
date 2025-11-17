@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 class PMM:
     # -------------------------- Initialization ---------------------------------------------
-    def __init__(self, dim, num_primary=2, num_secondary=0,
+    def __init__(self, dim=10, num_primary=2, num_secondary=0,
                  eta=.2e-2, beta1=0.9, beta2=0.999, eps=1e-8, absmaxgrad=1e3,
                  l2=0.0, mag=0.5e-1, seed=0):
 
