@@ -13,6 +13,9 @@ class PMM:
                  eta=.2e-2, beta1=0.9, beta2=0.999, eps=1e-8, absmaxgrad=1e3,
                  l2=0.0, mag=0.5e-1, seed=0):
 
+        self._init_kwargs = {"dim" : dim, "num_primary" : num_primary, "num_secondary" : num_secondary,
+                              "eta" : eta, "beta1" : beta1, "beta2" : beta2, "eps" : eps, "absmaxgrad" : absmaxgrad,
+                              "l2" : l2, "mag" : mag, "seed" : seed}
         # raise error if user attempts to train less than two primary matrices
         if num_primary < 2: 
             raise ValueError(f"Parametric matrix models require at least two primary matrices, got {num_primary}")

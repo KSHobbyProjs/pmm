@@ -178,3 +178,9 @@ def load_pmm_config(path):
                 key, val = line.split("=", 1)
                 config_file_kwargs[key.strip()] = val.strip()
     return config_file_kwargs
+
+def save_pmm_state(path):
+    raise NotImplementedError
+
+def save_loss(path):
+    raise NotImplementedError

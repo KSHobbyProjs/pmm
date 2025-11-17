@@ -52,7 +52,7 @@ def parse_parameter_values(parameter_string):
     # otherwise, assume a single float
     return np.array([float(s)])
 
-def parse_pmm_string(pmm_string):
+def parse_pmm_string(pmm_name_string):
     """
     Parses a CLI argument for PMM initialization.
 
@@ -71,7 +71,7 @@ def parse_pmm_string(pmm_string):
     parse_pmm_instance("PMM")          -> pmm.PMM
     parse_pmm_instance("PMMParity")    -> pmm.PMMParity()
     """
-    s = pmm_name.strip()
+    s = pmm_name_string.strip()
     try:
         return getattr(pmm, s)
     except AttributeError as e:

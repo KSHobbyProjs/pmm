@@ -24,6 +24,9 @@ def _setup_logging(verbose=0):
             format = "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
             datefmt = "%H:%M:%S"
         )
+    # Silence JAX logs
+    logging.getLogger("jax").setLevel(logging.WARNING)
+    logging.getLogger("jax._src.xla_bridge").setLevel(logging.WARNING)
 
 def _parse_args():
     parser = argparse.ArgumentParser(description="Run a Parametric Matrix Model using energy data loaded from a file.")
@@ -37,6 +40,7 @@ def _parse_args():
     parser.add_argument("-e", "--epochs", type=int, default=10000, help="Number of cycles to run PMM algorithm for.")
     parser.add_argument("-L", "--parameters", type=str, default="1.0", help="Parameter values at which to predict energies.")
     parser.add_argument("--store-loss", type=int, default=100, help="Frequency for storing the computing loss.")
+    parser.add_argument("-k", "--knum", type=int, default=None, help="The number of eigenvalues to write. Default is all.")
     parser.add_argument("-v", "--verbose", action="count", default=0, help="Increase verbosity (-v, -vv).")
     args = parser.parse_args()
     return args
@@ -54,20 +58,70 @@ def _parse_config_and_pmm(pmm_name_str, config_str, config_file):
 
     logger.debug(f"Parsed {pmm_name_str} -> {type(pmm_instance).__name__}")
     logger.debug(f"Parsed config -> " + 
-                 ", ".join(f"{k}={v} ({type(v).__name__})" for k, v in vars(pmm_instance).items()))
+                 ", ".join(f"{k}={v} ({type(v).__name__})" for k, v in pmm_instance._init_kwargs.items()))
     return pmm_instance
 
 def _load_data_from_input_file(input_file):
     if input_file.endswith(".h5"):
-        sample_Ls, sample_energies = io.load_energies_from_h5(input_file)
+        sample_Ls, sample_energies, _, _ = io.load_energies_from_h5(input_file)
         logger.debug(f"Loaded energy data from HDF5 file.")
     else:
-        sample_Ls, sample_energies = io.load_energies_from_dat(input_file)
+        sample_Ls, sample_energies, _ = io.load_energies_from_dat(input_file)
         logger.debug(f"Loaded energy data from .dat-type file.")
     return sample_Ls, sample_energies
 
+def _sample_pmm(pmm_instance, sample_Ls, sample_energies):
+    # normalize sample data so PMM trains easier
+    logger.debug(f"Normalizing sample energies and sample parameters.")
+    lmin, lmax, normed_sample_Ls = utils.normalize(sample_Ls)
+    emin, emax, normed_sample_energies = utils.normalize(sample_energies)
+    pmm_instance.sample_energies(normed_sample_Ls, normed_sample_energies)
+    return lmin, lmax, emin, emax
 
+def _parse_parameters(parameters_str):
+    parameters = parse.parse_parameter_values(parameters_str)
+    logger.debug(f"Parsed {parameters_str} -> {type(parameters).__name__} "
+                 f"with min={min(parameters)}, max={max(parameters)}, len={len(parameters)}.")
+    return parameters 
 
+def _predict_energies_from_pmm(pmm_instance, predict_Ls_str, lmin, lmax, emin, emax):
+    logger.info(f"Parsing parameter values.") 
+    predict_Ls = _parse_parameters(predict_Ls_str)
+    logger.debug(f"Parameters {predict_Ls_str} parsed -> {type(predict_Ls).__name__} "
+                 f"with min={min(predict_Ls)}, max={max(predict_Ls)}, len={len(predict_Ls)}")
+
+    logger.debug("Normalizing predict parameters with respect to sample parameters.")
+    _, _, normed_predict_Ls = utils.normalize(predict_Ls, lmin, lmax)
+
+    logger.info(f"Predicting energies of trained PMM.")
+    normed_predicted_energies = pmm_instance.predict_energies(normed_predict_Ls)
+
+    logger.debug(f"Denormalizing data for output.")
+    predicted_energies = utils.denormalize(normed_predicted_energies, emin, emax)
+    return predict_Ls, predicted_energies
+
+def _write_results(pmm_instance, args, predict_Ls, predicted_energies):
+    metadata = {"timestamp" : time.strftime("%A, %b %d, %Y %H:%M:%S"),
+                "PMM" : args.pmm_name,
+                "pmm_config" : ','.join(f"{k}={v}" for k, v in pmm_instance._init_kwargs.items()),
+                "input_file" : args.input_file,
+                "parameters" : args.parameters,
+                "epochs" : args.epochs,
+                "command" : ' '.join(sys.argv)
+                }
+    if args.save_energies.endswith(".h5"):
+        io.write_energies_to_h5(args.save_energies, predict_Ls, predicted_energies, metadata=metadata)
+        logger.debug(f"Saved energy to HDF5 file.")
+    else:
+        io.write_energies_to_dat(args.save_energies, predict_Ls, predicted_energies, metadata=metadata)
+        logger.debug(f"Saved energy to .dat-type file.")
+   
+def _print_results(predict_Ls, predicted_energies, losses):
+    print(losses[-1])
+    for i, L in enumerate(predict_Ls):
+        print(f"Spectrum at L = {L:.3f}")
+        print(f"\t{predicted_energies[i]}")
+    
 def main():
     # parse args, setup logging, and start timer
     args = _parse_args()
@@ -83,61 +137,36 @@ def main():
     logger.info(f"Loading energy data from input file.")
     sample_Ls, sample_energies = _load_data_from_input_file(args.input_file)
     
-    # sample pmm with loaded energies
-    logger.debug(f"Normalizing sample energies and sample parameters.")
-    sample_Ls_min, sample_Ls_max, normed_sample_Ls = utils.normalize(sample_Ls)
-    sample_energies_min, sample_energies_max, normed_sample_energies = utils.normalize(sample_energies)
+    # sample pmm with loaded energies after normalizing
     logger.info("Sampling pmm with energies loaded from file.")
-    pmm_instance.sample_energies(sample_Ls, sample_energies)
-
+    lmin, lmax, emin, emax = _sample_pmm(pmm_instance, sample_Ls, sample_energies)
+    
     # train the pmm for epoch number of cycles
     logger.info(f"Training pmm for {args.epochs} cycles and storing loss every {args.store_loss} cycles.")
     _, losses = pmm_instance.train_pmm(args.epochs, args.store_loss)
 
     # predict energies at Ls
-    logger.info(f"Parsing parameter values.") 
-    predict_Ls = run.parse_parameter_values(args.parameters)
-    logger.debug(f"Parsed {args.parameters} -> {type(predict_Ls).__name__} "
-                 f"with min={min(predict_Ls), max={max(predict_Ls)}, len={len(predict_Ls}.")
-    logger.debug("Normalizing predict parameters with respect to sample parameters.")
-    _, _, normed_predict_Ls = utils.normalize(predict_Ls, sample_Ls_min, sample_Ls_max)
-    logger.info(f"Predicting energies of trained PMM.")
-    normed_predicted_energies = pmm_instance.predict_energies(normed_predict_Ls)
-    logger.debug(f"Denormalizing data for output.")
-    predicted_energies = utils.denormalize(normed_predicted_energies, sample_energies_min, sample_energies_max)
+    predict_Ls, predicted_energies = _predict_energies_from_pmm(pmm_instance, args.parameters, lmin, lmax, emin, emax)
+    if args.knum is not None: predicted_energies = predicted_energies[:, :args.knum]
 
     # save energy data, pmm state, and loss data if desired
     if args.save_energies:
-        metadata = {"timestamp" : time.strftime("%A, %b %d, %Y %H:%M:%S"),
-                    "PMM" : args.pmm_name,
-                    "pmm_config" : ','.join("{k}={v}" for k, v in vars(pmm_instance).items()),
-                    "parameters" : args.parameters,
-                    "command" : ' '.join(sys.argv)
-                    }
         logger.info(f"Saving energy data to out file.")
-        if args.out.endswith(".h5"):
-            io.write_energies_to_h5(args.out, predict_Ls, predicted_energies, metadata=metadata)
-            logger.debug(f"Saved energy to HDF5 file.")
-        else:
-            io.write_energies_to_dat(args.out, predict_Ls, predicted_energies, metadata=metadata)
-            logger.debug(f"Saved energy to .dat-type file.")
+        _write_results(pmm_instance, args, predict_Ls, predicted_energies)
 
     if args.save_pmm:
         logger.info("Saving PMM state.")
-        save_pmm_state(args.save)
+        io.save_pmm_state(args.save)
 
     if args.save_loss:
         logger.info("Saving loss data.")
-        save_loss(args.loss)
+        io.save_loss(args.loss)
 
     # print data
-    for i, L in enumerate(predict_Ls):
-        print(f"Spectrum at L = {L:.3f}")
-        print(f"\t{predicted_energies[i]}")
-    
+    _print_results(predict_Ls, predicted_energies, losses)
     end = time.time()
     # print total time elapsed
     print(f"Done.\nElapsed time: {end - start:.3f} seconds.")
 
-if __init__=="__main__":
+if __name__=="__main__":
     main()
