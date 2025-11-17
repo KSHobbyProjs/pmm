@@ -1,6 +1,6 @@
 # config.txt
 # config file for pmm algorithm
-dim=10
+dim=16
 num_primary=2
 num_secondary=0
 eta=1.0e-2
