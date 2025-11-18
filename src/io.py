@@ -179,6 +179,23 @@ def load_pmm_config(path):
                 config_file_kwargs[key.strip()] = val.strip()
     return config_file_kwargs
 
+def _validate_eigenpair_data(parameters, energies, eigenvectors):
+    parameters, energies = np.atleast_1d(np.asarray(parameters)), np.atleast_1d(np.asarray(energies))
+    if parameters.shape[0] != energies.shape[0]:
+        raise ValueError(f"parameters and energies need to have the same 1st dimension, got "
+                         f"{parameters.shape[0]} vs {energies.shape[0]}.")
+    if energies.ndim == 1:
+        logger.warning(f"energies has shape (len(parameters),). Broadcasting to (len(parameters), 1).")
+        energies = energies[:, None]
+
+    if eigenvectors is not None:
+        eigenvectors = np.
+        if eigenvectors.shape[1:] != energies.shape:
+            raise ValueError(f"energies and eigenvectors must have the same shape along the first 2 dimensions, got "
+                             f"{energies.shape} vs {eigenvectors.shape[1:]}")
+
+
+
 def save_pmm_state(path):
     raise NotImplementedError
 
