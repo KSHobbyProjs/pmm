@@ -200,7 +200,6 @@ def save_loss(path, losses, store_loss, metadata=None):
         np.savetxt(f, np.column_stack([epochs_list, losses]), fmt="%.8f", delimiter="\t")
         
 def _validate_eigenpair_data(parameters, energies, eigenvectors):
-    logger.debug(f"Validating parameters, energies, and eigenvectors from I/O.")
     parameters, energies = np.atleast_1d(np.asarray(parameters)), np.atleast_1d(np.asarray(energies))
     
     # handle parameters
@@ -234,5 +233,6 @@ def _validate_eigenpair_data(parameters, energies, eigenvectors):
             raise ValueError(f"energies and eigenvectors must have the same shape along the first 2 dimensions, got "
                              f"{energies.shape} vs {eigenvectors.shape[1:]}") 
 
-    logger.debug(f"Validated I/O parameters, energies, and eigenvectors to shape {parameters.shape}, {energies.shape}, {eigenvectors.shape if eigenvectors is not None else None}.")
+    logger.debug(f"Validated that parameters, energies, and eigenvectors read from file are shape "
+                 f"{parameters.shape}, {energies.shape}, {eigenvectors.shape if eigenvectors is not None else None}.")
     return parameters, energies, eigenvectors
