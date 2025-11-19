@@ -76,6 +76,14 @@ def parse_pmm_string(pmm_name_string):
         return getattr(pmm, s)
     except AttributeError as e:
         raise RuntimeError(f"PMM {pmm_name} not found in `pmm` module.") from e
+
+def parse_config_dict(config_dict):
+    """
+    Parses a dictionary of key=val entries where val are raw strings 
+    into a dictionary of key=val entries where the val's type is determined by
+    the nature of the string
+    """
+    return {key : convert_value(val) for key, val in config_dict.items()}
     
 def parse_kwargs(kwargs_string):
     """
@@ -105,14 +113,6 @@ def parse_kwargs(kwargs_string):
         k, v = kv.split("=", 1)   
         kwargs[k.strip()] = convert_value(v) 
     return kwargs
-
-def parse_config_dict(config_dict):
-    """
-    Parses a dictionary of key=val entries where val are raw strings 
-    into a dictionary of key=val entries where the val's type is determined by
-    the nature of the string
-    """
-    return {key : convert_value(val) for key, val in config_dict.items()}
 
 def convert_value(v):
     """
