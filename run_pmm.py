@@ -75,15 +75,9 @@ def _sample_pmm(pmm_instance, sample_Ls, sample_energies):
     pmm_instance.sample_energies(normed_sample_Ls, normed_sample_energies)
     return lmin, lmax, emin, emax
 
-def _parse_parameters(parameters_str):
-    parameters = parse.parse_parameter_values(parameters_str)
-    logger.debug(f"Parsed {parameters_str} -> {type(parameters).__name__} "
-                 f"with min={min(parameters)}, max={max(parameters)}, len={len(parameters)}.")
-    return parameters 
-
 def _predict_energies_from_pmm(pmm_instance, predict_Ls_str, lmin, lmax, emin, emax):
     logger.info(f"Parsing parameter values.") 
-    predict_Ls = _parse_parameters(predict_Ls_str)
+    predict_Ls = parse.parse_parameter_values(predict_Ls_str)
     logger.debug(f"Parameters {predict_Ls_str} parsed -> {type(predict_Ls).__name__} "
                  f"with min={min(predict_Ls)}, max={max(predict_Ls)}, len={len(predict_Ls)}")
 
