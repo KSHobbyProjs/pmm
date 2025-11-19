@@ -97,7 +97,7 @@ def _predict_energies_from_pmm(pmm_instance, predict_Ls_str, lmin, lmax, emin, e
     predicted_energies = utils.denormalize(normed_predicted_energies, emin, emax)
     return predict_Ls, predicted_energies
 
-def _write_results(pmm_instance, args, predict_Ls, predicted_energies):
+def _get_metadata(args, pmm_instance):
     metadata = {"timestamp" : time.strftime("%A, %b %d, %Y %H:%M:%S"),
                 "PMM" : args.pmm_name,
                 "pmm_config" : ','.join(f"{k}={v}" for k, v in pmm_instance._init_kwargs.items()),
@@ -106,13 +106,17 @@ def _write_results(pmm_instance, args, predict_Ls, predicted_energies):
                 "epochs" : args.epochs,
                 "command" : ' '.join(sys.argv)
                 }
-    if args.save_energies.endswith(".h5"):
-        io.write_energies_to_h5(args.save_energies, predict_Ls, predicted_energies, metadata=metadata)
+    return metadata
+
+def _write_energy_data(save_energies_path, predict_Ls, predicted_energies, metadata):
+    if save_energies_path.endswith(".h5"):
+        io.write_energies_to_h5(save_energies_path, predict_Ls, predicted_energies, metadata=metadata)
         logger.debug(f"Saved energy to HDF5 file.")
     else:
-        io.write_energies_to_dat(args.save_energies, predict_Ls, predicted_energies, metadata=metadata)
+        io.write_energies_to_dat(save_energies_path, predict_Ls, predicted_energies, metadata=metadata)
         logger.debug(f"Saved energy to .dat-type file.")
-   
+  
+
 def _print_results(predict_Ls, predicted_energies, losses):
     print(losses[-1])
     for i, L in enumerate(predict_Ls):
@@ -147,17 +151,18 @@ def main():
     if args.knum is not None: predicted_energies = predicted_energies[:, :args.knum]
 
     # save energy data, pmm state, and loss data if desired
+    metadata = _get_metadata(args, pmm_instance)
     if args.save_energies:
         logger.info(f"Saving energy data to out file.")
-        _write_results(pmm_instance, args, predict_Ls, predicted_energies)
+        _write_energy_data(args.save_energies, predict_Ls, predicted_energies, metadata)
 
     if args.save_pmm:
         logger.info("Saving PMM state.")
-        io.save_pmm_state(args.save)
+        io.save_pmm_state(args.save_pmm)
 
     if args.save_loss:
         logger.info("Saving loss data.")
-        io.save_loss(args.loss)
+        io.save_loss(args.save_loss, losses, args.store_loss, metadata)
 
     # print data
     _print_results(predict_Ls, predicted_energies, losses)
