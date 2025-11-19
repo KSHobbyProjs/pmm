@@ -228,9 +228,9 @@ def _validate_eigenpair_data(parameters, energies, eigenvectors):
             # interpret as one vector for multiple parameters
             logger.debug(f"eigenvectors has shape {eigenvectors.shape}, broadcasting to ({eigenvectors.shape[0]}, 1, {eigenvectors.shape[1]}).")
             eigenvectors = eigenvectors[:, None, :]
-        elif eigenvectors.ndim > 2:
+        elif eigenvectors.ndim > 3:
             raise ValueError(f"eigenvectors can't be more than 3d, got {eigenvectors.ndim}.")
-        if eigenvectors.shape[1:] != energies.shape:
+        if eigenvectors.shape[:2] != energies.shape:
             raise ValueError(f"energies and eigenvectors must have the same shape along the first 2 dimensions, got "
                              f"{energies.shape} vs {eigenvectors.shape[1:]}") 
 
