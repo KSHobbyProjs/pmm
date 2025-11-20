@@ -36,13 +36,13 @@ The program requires an input file containing parameters and eigenvalue data.
 - If the input filename ends with `.h5`, the program expects a full HDF5 dataset.  
 - If the input filename ends with any other file extension, the program expects a `.dat`-style column-format summary.
 
-- ### `.h5` files — full dataset:
+- `.h5` files — full dataset:
   - `parameters` — 1D NumPy array of parameter values (`len(parameters)`)  
   - `energies` — 2D NumPy array of shape (`len(parameters)`, `knum`)  
     (*knum* is the number of eigenpairs per parameter, as set by `--knum`)  
   - `eigenvectors` — 3D NumPy array of shape (`len(parameters)`, `knum`, `vector dimension`)
 
-- ## `.dat` files — summary dataset:
+- `.dat` files — summary dataset:
   - Column 1: `parameters` — parameter values  
   - Columns 2..(knum+1): `energies` — one column per eigenvalue  
   - Note: `eigenvectors` are **not** included
