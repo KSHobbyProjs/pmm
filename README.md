@@ -90,4 +90,5 @@ The program writes results to a file specified by the user.
 ## Adding a PMM Type:
 PMM types are stored in `src/pmm.py`. To add a new PMM type, just add a class in this module that subclasses `PMM` and
 - Modify `loss(params, Ls, energies, l2)` to adjust how the loss is computed (default is mean squared error between predicted eigenvalues and sampled eigenvalues).
+
 Once defined, the model can be used with `--pmm-name [NewPMMClassName]`.
