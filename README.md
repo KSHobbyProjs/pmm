@@ -40,12 +40,10 @@ The program requires an input file containing parameters and eigenvalue data.
   - `parameters` — 1D NumPy array of parameter values (`len(parameters)`)  
   - `energies` — 2D NumPy array of shape (`len(parameters)`, `knum`)  
     (*knum* is the number of eigenpairs per parameter, as set by `--knum`)  
-  - `eigenvectors` — 3D NumPy array of shape (`len(parameters)`, `knum`, `vector dimension`)
 
 - `.dat` files — summary dataset:
   - Column 1: `parameters` — parameter values  
   - Columns 2..(knum+1): `energies` — one column per eigenvalue  
-  - Note: `eigenvectors` are **not** included
 
 ### Notes on Data Shapes
 
