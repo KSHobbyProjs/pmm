@@ -67,6 +67,14 @@ class PMM:
         # PMM state
         self._dim = dim
         self._matrix_specs = tuple(matrix_specs)
+        self._primary_specs = tuple(
+                spec for spec in self._matrix_specs
+                if spec.is_secondary
+            )
+        self._secondary_specs = tuple(
+                spec for spec in self._matrix_specs
+                if not spec.is_secondary
+            )
         # raise error if user attempts to train less than one primary matrices
         if len(self._matrix_specs) < 1: 
             raise ValueError(f"Parametric matrix models require at least one primary matrices, got {len(self._matrix_specs)}")
@@ -160,18 +168,19 @@ class PMM:
             raise RuntimeError("No data loaded. Run `sample_energies()` or `load()` before `train_pmm()`.")
 
         # construct vt and mt moments (tree.map allows us to move over the whole dictionary at once)
-        specs = self._matrix_specs
+        primary_specs = self._primary_specs
+        secondary_specs = self._secondary_specs
         params = self._params
         mt, vt = self._mt, self._vt
-        Ls, energies = self._sample_data["Ls"], self._sample_data["energies"]
+        sample_data = self._sample_data
         n = self._dim
 
         # create array to store loss at epoch t
         losses = np.zeros(epochs // store_loss)
 
         # wrap the loss to avoid issues with non-hashable spec variable
-        def loss_wrapped(params, Ls, energies):
-            return self.loss(n, specs, params, Ls, energies)
+        def loss_wrapped(params, sample_data):
+            return self.loss(n, primary_specs, secondary_specs, params, sample_data)
         # jit the loss function so that it's significantly quicker to call
         jit_loss = jax.jit(loss_wrapped)
         grad_loss = jax.jit(jax.grad(loss_wrapped))
@@ -182,7 +191,7 @@ class PMM:
             # calculate the gradient (automatically applies through leafs (dictionary keys))
             # update the parameters with jax.tree.map (automatically aligns and moves through
             # dictionary keys so the whole dictionary can be moved through at once)
-            gt = grad_loss(params, Ls, energies)
+            gt = grad_loss(params, sample_data)
             update = jax.tree.map(lambda p, m, v, g: PMM._adam_update(p, m, v, t, g, 
                                                                              self._eta, self._beta1, self._beta2,
                                                                              self._eps, self._absmaxgrad),
@@ -199,7 +208,7 @@ class PMM:
 
             # store loss
             if t % store_loss == 0:
-                losses_at_t = jit_loss(params, Ls, energies)
+                losses_at_t = jit_loss(params, sample_data)
                 losses[t // store_loss] = losses_at_t
         
         self._losses.extend(losses)
@@ -311,7 +320,7 @@ class PMM:
     # loss function
     # mean squared error of the predicted eigenvalues to the true eigenvalues
     @staticmethod
-    def loss(n, specs, params, Ls, energies):
+    def loss(n, primary_specs, secondary_specs, params, sample_data):
         """
         Calculate the loss given a specific PMM configuration.
 
@@ -333,8 +342,9 @@ class PMM:
         loss : float
             Loss value for given PMM configuration.
         """
+        Ls, energies = sample_data["Ls"], sample_data["energies"]
         k_num = energies.shape[1]
-        Ms = PMM._M(n, specs, params, Ls)
+        Ms = PMM._M(n, primary_specs, params, Ls)
         eigvals, _ = PMM._get_eigenpairs(Ms)
         eigvals = eigvals[:, :k_num] # truncate to the k_num_sample lowest eigenvalues
         loss = jnp.mean(jnp.abs(eigvals - energies)**2)
@@ -375,7 +385,7 @@ class PMM:
         return eigvals, eigvecs
 
     @staticmethod
-    def _M(n, specs, params, Ls):
+    def _M(n, primary_specs, params, Ls):
         """
         Construct the PMM matrix M given matrix specs and the updated parameters.
         
@@ -398,8 +408,7 @@ class PMM:
         terms = [
             spec.basis_fn(Ls)[:, None, None]
             * matutils.build_matrix(n, spec, params[spec.name])
-            for spec in specs
-            if not spec.is_secondary
+            for spec in primary_specs
         ]
 
         M = jnp.sum(jnp.stack(terms), axis=0)
@@ -429,3 +438,51 @@ class PMM:
         # step parameter
         parameter = parameter - eta * mt_hat / (jnp.sqrt(vt_hat) + eps)
         return parameter, mt, vt
+
+class PMMSecondary(PMM):
+    def _make_RR(n, secondary_spec, params):
+        RR = matutils.build_matrix(n, secondary_spec, params[secondary_spec.name])
+        return RR
+            
+    def sample_secondarydata(self, secondarydata):
+        secondarydata = jnp.atleast_1d(secondarydata)
+
+        if secondarydata.ndim == 1:
+            secondarydata = secondarydata[:, None]
+
+        self._sample_data["secondarydata"] = secondarydata
+
+    def _get_expected_rrs(RR, eigvecs):
+        return jnp.einsum('abi,ij,abj->ab', eigvecs, RR, eigvecs)
+
+    @staticmethod
+    def loss(n, primary_specs, secondary_specs, params, sample_data):
+        Ls, energies, secondarydata = sample_data["Ls"], sample_data["energies"], sample_data["secondarydata"]
+        k_num, k_num_secondary = energies.shape[1], secondarydata.shape[1]
+        
+        # mean-squared error energy loss term
+        Ms = PMMSecondary._M(n, specs, params, Ls)
+        eigvals, eigvecs = PMMSecondary._get_eigenpairs(Ms)
+        eigvals = eigvals[:, :k_num] # truncate to the k_num_sample lowest eigenvalues
+        energyloss = jnp.mean(jnp.abs(eigvals - energies)**2)
+
+        # secondary-data loss term
+        RR = PMMSecondary._make_RR(n, secondary_specs[0], params)
+        expected_rrs = PMMSecondary._get_expected_rrs(RR, eigvecs)
+        rrloss = jnp.mean(jnp.abs((rrs - expected_rrs) / Ls[:, None]**2)**2)
+        
+        loss = energyloss + rrloss
+        return loss
+
+    def predict_secondarydata(self, predict_Ls, k_num=None):
+        predict_Ls = jnp.atleast_1d(predict_Ls)
+        _, eigvecs = self._get_eigenpairs(self._M(self._dim, self._primary_specs, self._params, predict_Ls))
+        RR = self._make_RR(self._dim, self._secondary_specs, self._params)
+        rrs = self._get_expected_rrs(RR, eigvecs)
+        if k_num is None:
+            return rrs
+        else:
+            return rrs[:, :k_num]
+
+
+
